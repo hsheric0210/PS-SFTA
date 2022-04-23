@@ -562,12 +562,11 @@ function Set-FTA {
   #use in this special case
   #https://github.com/DanysysTeam/PS-SFTA/pull/7
   function local:Get-UserSidDomain {
-    [OutputType([string])]
-
     if (-not ("System.DirectoryServices.AccountManagement" -as [type])) {
       Add-Type -AssemblyName System.DirectoryServices.AccountManagement
     }
 
+    [OutputType([string])]
     $userSid = ([System.DirectoryServices.AccountManagement.UserPrincipal]::Current).SID.Value.ToLower()
     Write-Output $userSid
   }
