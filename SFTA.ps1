@@ -540,7 +540,7 @@ function Set-FTA {
     [OutputType([string])]
       
     $userExperienceSearch = "User Choice set via Windows User Experience"
-    $user32Path = [Environment]::GetFolderPath([Environment+SpecialFolder]::SystemX86) + "\Shell32.dll"
+    $user32Path = [Environment]::GetFolderPath([Environment.SpecialFolder]::SystemX86) + "\Shell32.dll"
     $fileStream = [System.IO.File]::Open($user32Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
     $binaryReader = New-Object System.IO.BinaryReader($fileStream)
     [Byte[]] $bytesData = $binaryReader.ReadBytes(5mb)
@@ -562,10 +562,12 @@ function Set-FTA {
   #use in this special case
   #https://github.com/DanysysTeam/PS-SFTA/pull/7
   function local:Get-UserSidDomain {
+    [OutputType([string])]
+
     if (-not ("System.DirectoryServices.AccountManagement" -as [type])) {
       Add-Type -AssemblyName System.DirectoryServices.AccountManagement
     }
-    [OutputType([string])]
+
     $userSid = ([System.DirectoryServices.AccountManagement.UserPrincipal]::Current).SID.Value.ToLower()
     Write-Output $userSid
   }
