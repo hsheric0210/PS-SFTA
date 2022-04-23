@@ -24,6 +24,11 @@ PowerShell Set File/Protocol Type Association Default Application Windows 10/11
 Get-Help .\SFTA.ps1 -full
 ```
 
+## How to import?
+```powershell
+. .\SFTA.ps1
+```
+
 ## Basic Usage
 
 ##### Set Acrobat Reader DC as Default .pdf reader:
@@ -58,6 +63,10 @@ Register-FTA "C:\SumatraPDF.exe" .pdf -Icon "shell32.dll,100"
 powershell -ExecutionPolicy Bypass -command "& { . .\SFTA.ps1; Set-FTA 'Applications\SumatraPDF.exe' '.pdf' }"
 
 ```
+
+## Warning!
+### This tool can't change file type description!
+#### To change file type description, open regedit and edit <u>default value</u> of **HKEY_CLASSES_ROOT\\{ProgID}**
 
 
 ## Release History
