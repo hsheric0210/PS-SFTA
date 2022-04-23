@@ -114,14 +114,18 @@ function Register-FTA {
     [Alias("Protocol")]
     [String]
     $Extension,
-    
+
     [Parameter( Position = 2, Mandatory = $false)]
     [String]
     $ProgId,
-    
+
     [Parameter( Position = 3, Mandatory = $false)]
     [String]
-    $Icon
+    $Icon,
+
+    [Parameter( Position = 4, Mandatory = $false)]
+    [String]
+    $Description
   )
 
   Write-Verbose "Register Application + Set Association"
@@ -132,27 +136,27 @@ function Register-FTA {
   else {
     Write-Verbose "Protocol: $Extension"
   }
-  
+
   if (!$ProgId) {
     $ProgId = "SFTA." + [System.IO.Path]::GetFileNameWithoutExtension($ProgramPath).replace(" ", "") + $Extension
   }
-  
+
   $progCommand = """$ProgramPath"" ""%1"""
-  Write-Verbose "ApplicationId: $ProgId" 
+  Write-Verbose "ApplicationId: $ProgId"
   Write-Verbose "ApplicationCommand: $progCommand"
-  
+
   try {
     $keyPath = "HKEY_CURRENT_USER\SOFTWARE\Classes\$Extension\OpenWithProgids"
     [Microsoft.Win32.Registry]::SetValue( $keyPath, $ProgId, ([byte[]]@()), [Microsoft.Win32.RegistryValueKind]::None)
     $keyPath = "HKEY_CURRENT_USER\SOFTWARE\Classes\$ProgId\shell\open\command"
-    [Microsoft.Win32.Registry]::SetValue($keyPath, "", $progCommand)
+    [Microsoft.Win32.Registry]::SetValue($keyPath, "", $progCommand, [Microsoft.Win32.RegistryValueKind]::ExpandString)
     Write-Verbose "Register ProgId and ProgId Command OK"
   }
   catch {
     throw "Register ProgId and ProgId Command FAILED"
   }
-  
-  Set-FTA -ProgId $ProgId -Extension $Extension -Icon $Icon
+
+  Set-FTA -ProgId $ProgId -Extension $Extension -Icon $Icon -Description $Description
 }
 
 
@@ -168,7 +172,7 @@ function Remove-FTA {
     [String]
     $Extension
   )
-  
+
   function local:Remove-UserChoiceKey {
     param (
       [Parameter( Position = 0, Mandatory = $True )]
@@ -206,8 +210,8 @@ function Remove-FTA {
     try {
       [Registry.Utils]::DeleteKey($Key)
     }
-    catch {} 
-  } 
+    catch {}
+  }
 
   function local:Update-Registry {
     $code = @'
@@ -216,7 +220,7 @@ function Remove-FTA {
     public static void Refresh() {
         SHChangeNotify(0x8000000, 0, IntPtr.Zero, IntPtr.Zero);    
     }
-'@ 
+'@
 
     try {
       Add-Type -MemberDefinition $code -Namespace SHChange -Name Notify
@@ -226,7 +230,7 @@ function Remove-FTA {
     try {
       [SHChange.Notify]::Refresh()
     }
-    catch {} 
+    catch {}
   }
 
   if (Test-Path -Path $ProgramPath) {
@@ -244,7 +248,7 @@ function Remove-FTA {
     $keyPath = "HKCU:\SOFTWARE\Classes\$ProgId"
     Write-Verbose "Remove Key If Exist: $keyPath"
     Remove-Item -Path $keyPath -Recurse -ErrorAction Stop | Out-Null
-    
+
   }
   catch {
     Write-Verbose "Key No Exist: $keyPath"
@@ -254,14 +258,13 @@ function Remove-FTA {
     $keyPath = "HKCU:\SOFTWARE\Classes\$Extension\OpenWithProgids"
     Write-Verbose "Remove Property If Exist: $keyPath Property $ProgId"
     Remove-ItemProperty -Path $keyPath -Name $ProgId -ErrorAction Stop | Out-Null
-    
   }
   catch {
     Write-Verbose "Property No Exist: $keyPath Property: $ProgId"
-  } 
+  }
 
   Update-Registry
-  Write-Output "Removed: $ProgId" 
+  Write-Output "Removed: $ProgId"
 }
 
 
@@ -277,14 +280,17 @@ function Set-FTA {
     [Alias("Protocol")]
     [String]
     $Extension,
-      
+
     [String]
     $Icon,
+
+    [String]
+    $Description,
 
     [switch]
     $DomainSID
   )
-  
+
   if (Test-Path -Path $ProgId) {
     $ProgId = "SFTA." + [System.IO.Path]::GetFileNameWithoutExtension($ProgId).replace(" ", "") + $Extension
   }
@@ -292,7 +298,7 @@ function Set-FTA {
   Write-Verbose "ProgId: $ProgId"
   Write-Verbose "Extension/Protocol: $Extension"
 
-  
+
   #Write required Application Ids to ApplicationAssociationToasts
   #When more than one application associated with an Extension/Protocol is installed ApplicationAssociationToasts need to be updated
   function local:Write-RequiredApplicationAssociationToasts {
@@ -305,17 +311,17 @@ function Set-FTA {
       [String]
       $Extension
     )
-    
+
     try {
       $keyPath = "HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts"
-      [Microsoft.Win32.Registry]::SetValue($keyPath, $ProgId + "_" + $Extension, 0x0) 
+      [Microsoft.Win32.Registry]::SetValue($keyPath, $ProgId + "_" + $Extension, 0x0)
       Write-Verbose ("Write Reg ApplicationAssociationToasts OK: " + $ProgId + "_" + $Extension)
     }
     catch {
       Write-Verbose ("Write Reg ApplicationAssociationToasts FAILED: " + $ProgId + "_" + $Extension)
     }
-    
-    $allApplicationAssociationToasts = Get-ChildItem -Path HKLM:\SOFTWARE\Classes\$Extension\OpenWithList\* -ErrorAction SilentlyContinue | 
+
+    $allApplicationAssociationToasts = Get-ChildItem -Path HKLM:\SOFTWARE\Classes\$Extension\OpenWithList\* -ErrorAction SilentlyContinue |
     ForEach-Object {
       "Applications\$($_.PSChildName)"
     }
@@ -327,13 +333,13 @@ function Set-FTA {
         }
       })
 
-    
-    $allApplicationAssociationToasts += Get-ChildItem -Path HKLM:SOFTWARE\Clients\StartMenuInternet\* , HKCU:SOFTWARE\Clients\StartMenuInternet\* -ErrorAction SilentlyContinue | 
+
+    $allApplicationAssociationToasts += Get-ChildItem -Path HKLM:SOFTWARE\Clients\StartMenuInternet\* , HKCU:SOFTWARE\Clients\StartMenuInternet\* -ErrorAction SilentlyContinue |
     ForEach-Object {
     (Get-ItemProperty ("$($_.PSPath)\Capabilities\" + (@("URLAssociations", "FileAssociations") | Select-Object -Index $Extension.Contains("."))) -ErrorAction SilentlyContinue).$Extension
     }
-    
-    $allApplicationAssociationToasts | 
+
+    $allApplicationAssociationToasts |
     ForEach-Object { if ($_) {
         if (Set-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\ApplicationAssociationToasts $_"_"$Extension -Value 0 -Type DWord -ErrorAction SilentlyContinue -PassThru) {
           Write-Verbose  ("Write Reg ApplicationAssociationToastsList OK: " + $_ + "_" + $Extension)
@@ -341,7 +347,7 @@ function Set-FTA {
         else {
           Write-Verbose  ("Write Reg ApplicationAssociationToastsList FAILED: " + $_ + "_" + $Extension)
         }
-      } 
+      }
     }
 
   }
@@ -353,7 +359,7 @@ function Set-FTA {
     public static void Refresh() {
         SHChangeNotify(0x8000000, 0, IntPtr.Zero, IntPtr.Zero);    
     }
-'@ 
+'@
 
     try {
       Add-Type -MemberDefinition $code -Namespace SHChange -Name Notify
@@ -363,9 +369,9 @@ function Set-FTA {
     try {
       [SHChange.Notify]::Refresh()
     }
-    catch {} 
+    catch {}
   }
-  
+
 
   function local:Set-Icon {
     param (
@@ -380,7 +386,7 @@ function Set-FTA {
 
     try {
       $keyPath = "HKEY_CURRENT_USER\SOFTWARE\Classes\$ProgId\DefaultIcon"
-      [Microsoft.Win32.Registry]::SetValue($keyPath, "", $Icon) 
+      [Microsoft.Win32.Registry]::SetValue($keyPath, "", $Icon, [Microsoft.Win32.RegistryValueKind]::ExpandString)
       Write-Verbose "Write Reg Icon OK"
       Write-Verbose "Reg Icon: $keyPath"
     }
@@ -389,6 +395,27 @@ function Set-FTA {
     }
   }
 
+  function local:Set-Description {
+    param (
+      [Parameter( Position = 0, Mandatory = $True )]
+      [String]
+      $ProgId,
+
+      [Parameter( Position = 1, Mandatory = $True )]
+      [String]
+      $Description
+    )
+
+    try {
+      $keyPath = "HKEY_CURRENT_USER\SOFTWARE\Classes\$ProgId"
+      [Microsoft.Win32.Registry]::SetValue($keyPath, "", $Description)
+      Write-Verbose "Write Reg Description OK"
+      Write-Verbose "Reg Description: $keyPath"
+    }
+    catch {
+      Write-Verbose "Write Reg Description Fail"
+    }
+  }
 
   function local:Write-ExtensionKeys {
     param (
@@ -434,7 +461,7 @@ function Set-FTA {
         }
       }
 '@
-  
+
       try {
         Add-Type -TypeDefinition $code
       }
@@ -443,8 +470,8 @@ function Set-FTA {
       try {
         [Registry.Utils]::DeleteKey($Key)
       }
-      catch {} 
-    } 
+      catch {}
+    }
 
     
     try {
@@ -544,7 +571,6 @@ function Set-FTA {
   }
 
 
-
   function local:Get-HexDateTime {
     [OutputType([string])]
 
@@ -570,12 +596,12 @@ function Set-FTA {
       [CmdletBinding()]
       param (
         [Parameter( Position = 0, Mandatory = $true)]
-        [long] $iValue, 
-            
+        [long] $iValue,
+
         [Parameter( Position = 1, Mandatory = $true)]
-        [int] $iCount 
+        [int] $iCount
       )
-    
+
       if ($iValue -band 0x80000000) {
         Write-Output (( $iValue -shr $iCount) -bxor 0xFFFF0000)
       }
@@ -604,18 +630,18 @@ function Set-FTA {
         [Parameter( Position = 0, Mandatory = $true)]
         $Value
       )
-    
+
       [byte[]] $bytes = [BitConverter]::GetBytes($Value)
-      return [BitConverter]::ToInt32( $bytes, 0) 
+      return [BitConverter]::ToInt32( $bytes, 0)
     }
 
-    [Byte[]] $bytesBaseInfo = [System.Text.Encoding]::Unicode.GetBytes($baseInfo) 
-    $bytesBaseInfo += 0x00, 0x00  
-    
+    [Byte[]] $bytesBaseInfo = [System.Text.Encoding]::Unicode.GetBytes($baseInfo)
+    $bytesBaseInfo += 0x00, 0x00
+
     $MD5 = New-Object -TypeName System.Security.Cryptography.MD5CryptoServiceProvider
     [Byte[]] $bytesMD5 = $MD5.ComputeHash($bytesBaseInfo)
-    
-    $lengthBase = ($baseInfo.Length * 2) + 2 
+
+    $lengthBase = ($baseInfo.Length * 2) + 2
     $length = (($lengthBase -band 4) -le 1) + (Get-ShiftRight $lengthBase  2) - 1
     $base64Hash = ""
 
@@ -624,7 +650,7 @@ function Set-FTA {
       $map = @{PDATA = 0; CACHE = 0; COUNTER = 0 ; INDEX = 0; MD51 = 0; MD52 = 0; OUTHASH1 = 0; OUTHASH2 = 0;
         R0 = 0; R1 = @(0, 0); R2 = @(0, 0); R3 = 0; R4 = @(0, 0); R5 = @(0, 0); R6 = @(0, 0); R7 = @(0, 0)
       }
-    
+
       $map.CACHE = 0
       $map.OUTHASH1 = 0
       $map.PDATA = 0
@@ -655,11 +681,11 @@ function Set-FTA {
       $buffer.CopyTo($outHash, 0)
       $buffer = [BitConverter]::GetBytes($map.OUTHASH2)
       $buffer.CopyTo($outHash, 4)
-    
+
       $map = @{PDATA = 0; CACHE = 0; COUNTER = 0 ; INDEX = 0; MD51 = 0; MD52 = 0; OUTHASH1 = 0; OUTHASH2 = 0;
         R0 = 0; R1 = @(0, 0); R2 = @(0, 0); R3 = 0; R4 = @(0, 0); R5 = @(0, 0); R6 = @(0, 0); R7 = @(0, 0)
       }
-    
+
       $map.CACHE = 0
       $map.OUTHASH1 = 0
       $map.PDATA = 0
@@ -681,7 +707,7 @@ function Set-FTA {
         $map.R5[0] = Convert-Int32 ((0x96FF0000L * $map.R4[1]) - (0x2C7C6901L * (Get-ShiftRight $map.R4[1] 16)))
         $map.R5[1] = Convert-Int32 ((0x2B890000L * $map.R5[0]) + (0x7C932B89L * (Get-ShiftRight $map.R5[0] 16)))
         $map.OUTHASH1 = Convert-Int32 ((0x9F690000L * $map.R5[1]) - (0x405B6097L * (Get-ShiftRight ($map.R5[1]) 16)))
-        $map.OUTHASH2 = Convert-Int32 ([long]$map.OUTHASH1 + $map.CACHE + $map.R3) 
+        $map.OUTHASH2 = Convert-Int32 ([long]$map.OUTHASH1 + $map.CACHE + $map.R3)
         $map.CACHE = ([long]$map.OUTHASH2)
         $map.COUNTER = $map.COUNTER - 1
       }
@@ -699,15 +725,15 @@ function Set-FTA {
       $buffer.CopyTo($outHashBase, 0)
       $buffer = [BitConverter]::GetBytes($hashValue2)
       $buffer.CopyTo($outHashBase, 4)
-      $base64Hash = [Convert]::ToBase64String($outHashBase) 
+      $base64Hash = [Convert]::ToBase64String($outHashBase)
     }
 
     Write-Output $base64Hash
   }
 
   Write-Verbose "Getting Hash For $ProgId   $Extension"
-  If ($DomainSID.IsPresent) { Write-Verbose  "Use Get-UserSidDomain" } Else { Write-Verbose  "Use Get-UserSid" } 
-  $userSid = If ($DomainSID.IsPresent) { Get-UserSidDomain } Else { Get-UserSid } 
+  If ($DomainSID.IsPresent) { Write-Verbose  "Use Get-UserSidDomain" } Else { Write-Verbose  "Use Get-UserSid" }
+  $userSid = If ($DomainSID.IsPresent) { Get-UserSidDomain } Else { Get-UserSid }
   $userExperience = Get-UserExperience
   $userDateTime = Get-HexDateTime
   Write-Debug "UserDateTime: $userDateTime"
@@ -719,7 +745,7 @@ function Set-FTA {
 
   $progHash = Get-Hash $baseInfo
   Write-Verbose "Hash: $progHash"
-  
+
   #Write AssociationToasts List
   Write-RequiredApplicationAssociationToasts $ProgId $Extension
 
@@ -734,7 +760,11 @@ function Set-FTA {
     Write-ProtocolKeys $ProgId $Extension $progHash
   }
 
-   
+  if ($Description) {
+    Write-Verbose  "Set Desription: $Description"
+    Set-Description $ProgId $Description
+  }
+
   if ($Icon) {
     Write-Verbose  "Set Icon: $Icon"
     Set-Icon $ProgId $Icon
@@ -754,7 +784,7 @@ function Set-PTA {
     [Parameter(Mandatory = $true)]
     [String]
     $Protocol,
-      
+
     [String]
     $Icon
   )
